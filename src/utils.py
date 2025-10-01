@@ -102,7 +102,7 @@ def pass_checks(
     config: Dict,
     synth: pd.DataFrame,
     rwd: Optional[pd.DataFrame] = None,
-    target_col: Optional[str] = None,
+    adversarial_checks: Optional[bool] = False,
 ) -> None:
     """Validate input data and configuration for post-market evaluation.
 
@@ -110,7 +110,8 @@ def pass_checks(
         config (Dict): Configuration dictionary containing expected values.
         synth (pd.DataFrame): Synthetic data.
         rwd (Optional[pd.DataFrame]): Real-world data. Defaults to None.
-        target_col (Optional[str]): Target column name. Defaults to None.
+        adversarial_checks (Optional[bool]): Indicates if both synth and
+                              rwd datasets are passed. Defaults to False.
 
     Raises:
         ValueError: If data validation fails.
@@ -135,10 +136,9 @@ def pass_checks(
             f"Columns that are evaluated through expert knowledge cannot be missing. Check again the data provided."
         )
 
-    # If adversarial evaluation data is provided, validate all components
-    adversarial_data_provided = target_col is not None
+    if adversarial_checks:
+        target_col = config.get("target_column")
 
-    if adversarial_data_provided:
         if rwd is None:
             raise ValueError(
                 f"Real World data can not be None. Check again the data provided."
