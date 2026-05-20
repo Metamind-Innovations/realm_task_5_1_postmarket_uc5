@@ -1,16 +1,17 @@
-from typing import Dict, Any, Dict
-import pandas as pd
-import numpy as np
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 import argparse
 from pathlib import Path
+from typing import Any, Dict
+
+import numpy as np
+import pandas as pd
+from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
 
 from utils import load_csv, store_json, pass_checks, get_config
 from COPowereD_model import COPowereDWrapper
 
 
 def calculate_classification_metrics(
-    y_true: np.ndarray, y_pred: np.ndarray
+        y_true: np.ndarray, y_pred: np.ndarray
 ) -> Dict[str, float]:
     """Calculate classification metrics.
 
@@ -34,37 +35,42 @@ def calculate_classification_metrics(
 
 
 def combine_metrics_results(
-    synth_metrics: Dict[str, float], rwd_metrics: Dict[str, float]
+        synth_metrics: Dict[str, float], rwd_metrics: Dict[str, float]
 ) -> Dict[str, Dict[str, float]]:
-    """Combines metrics results into structured dictionary with rwd, synthetic, and difference.
+    """Combines metrics results into structured dictionary with rwd,
+    synthetic, and difference.
 
     Args:
         synth_metrics (Dict[str, float]): Metrics calculated on synthetic data.
         rwd_metrics (Dict[str, float]): Metrics calculated on real-world data.
 
     Returns:
-        Dict[str, Dict[str, float]]: Formatted metrics with rwd, synthetic, and difference values.
+        Dict[str, Dict[str, float]]: Formatted metrics with rwd, synthetic,
+            and difference values.
     """
 
     combined_results = {}
 
     for metric_name in synth_metrics.keys():
         if metric_name in rwd_metrics:
+            difference_pp = (
+                                    synth_metrics[metric_name] - rwd_metrics[metric_name]
+                            ) * 100
             combined_results[metric_name] = {
                 "rwd": rwd_metrics[metric_name],
                 "synthetic": synth_metrics[metric_name],
-                "difference": f"{abs(synth_metrics[metric_name] - rwd_metrics[metric_name])*100}pp",
+                "difference": f"{difference_pp:+.1f}pp",
             }
 
     return combined_results
 
 
 def adversarial_evaluation(
-    X_synth: pd.DataFrame,
-    X_rwd: pd.DataFrame,
-    y_synth: np.ndarray,
-    y_rwd: np.ndarray,
-    config: Dict[str, Any],
+        X_synth: pd.DataFrame,
+        X_rwd: pd.DataFrame,
+        y_synth: np.ndarray,
+        y_rwd: np.ndarray,
+        config: Dict[str, Any],
 ) -> Dict[str, Dict[str, float]]:
     """
     Perform adversarial evaluation comparing synthetic and real-world data.
@@ -108,9 +114,9 @@ def adversarial_evaluation(
 
 
 def run_adversarial_evaluation(
-    synth_path: Path,
-    rwd_path: Path,
-    output_path: Path,
+        synth_path: Path,
+        rwd_path: Path,
+        output_path: Path,
 ) -> None:
     """Run adversarial evaluation comparing synthetic vs real-world data performance.
 
@@ -154,10 +160,10 @@ def run_adversarial_evaluation(
 
 
 def main() -> None:
-    """Main entry point for adversarial evaluation of COPowereD synthetic vs real-world data.
+    """Run adversarial evaluation from the command line.
 
     Parses command line arguments and executes adversarial evaluation comparing
-    model performance on synthetic and real-world datasets using dockerized model.
+    model performance on synthetic and real-world datasets using the Dockerized model.
     """
 
     parser = argparse.ArgumentParser(
