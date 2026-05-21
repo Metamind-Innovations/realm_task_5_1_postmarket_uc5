@@ -1,7 +1,8 @@
-import pandas as pd
-from typing import Dict, Any, Tuple, List
-from pathlib import Path
 import argparse
+from pathlib import Path
+from typing import Any, Dict, List, Tuple
+
+import pandas as pd
 
 from utils import load_csv, store_json, pass_checks, get_config
 
@@ -51,8 +52,8 @@ def check_column_existence(
     dataset_columns = set(df.columns)
     expected_columns_set = set(expected_columns)
 
-    missing_columns = list(expected_columns_set - dataset_columns)
-    inconsistent_columns = list(dataset_columns - expected_columns_set)
+    missing_columns = sorted(expected_columns_set - dataset_columns)
+    inconsistent_columns = sorted(dataset_columns - expected_columns_set)
 
     return missing_columns, inconsistent_columns
 
@@ -128,7 +129,8 @@ def statistical_analysis(
 
     Args:
         synth_data (pd.DataFrame): Synthetic dataset to analyze.
-        config (Dict[str, Any]): Configuration dictionary containing analysis parameters.
+        config (Dict[str, Any]): Configuration dictionary containing analysis
+            parameters.
 
     Returns:
         Dict[str, Any]: Dictionary containing all statistical analysis results including

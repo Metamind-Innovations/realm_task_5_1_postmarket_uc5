@@ -1,8 +1,9 @@
-import pandas as pd
-import numpy as np
 import json
-from typing import Union, Optional, Any, Dict
 from pathlib import Path
+from typing import Any, Dict, Optional, Union
+
+import numpy as np
+import pandas as pd
 
 filepath_dir = Path(__file__).parent
 CONFIG_PATH = filepath_dir / "config.json"
@@ -19,6 +20,7 @@ def load_csv(file_path: Union[str, Path]) -> Optional[pd.DataFrame]:
     """
 
     df = pd.read_csv(file_path, sep=",")
+
     return df
 
 
@@ -42,7 +44,7 @@ def load_json(path: Union[str, Path]) -> Dict[str, Any]:
     if not path.exists():
         raise FileNotFoundError(f"JSON file not found: {path}")
 
-    with open(path, "r") as f:
+    with open(path, "r", encoding="utf-8") as f:
         data = json.load(f)
 
     return data
@@ -83,7 +85,7 @@ def store_json(data: Any, path: Union[str, Path]) -> None:
         None
     """
 
-    with open(path, "w") as f:
+    with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=4, cls=NumpyEncoder)
 
 
@@ -99,10 +101,10 @@ def get_config() -> Dict[str, Any]:
 
 
 def pass_checks(
-    config: Dict,
-    synth: pd.DataFrame,
-    rwd: Optional[pd.DataFrame] = None,
-    adversarial_checks: Optional[bool] = False,
+        config: Dict,
+        synth: pd.DataFrame,
+        rwd: Optional[pd.DataFrame] = None,
+        adversarial_checks: Optional[bool] = False,
 ) -> None:
     """Validate input data and configuration for post-market evaluation.
 
@@ -120,12 +122,12 @@ def pass_checks(
     # Always check synth
     if synth is None:
         raise ValueError(
-            f"Synthetic data can not be None. Check again the data provided."
+            "Synthetic data can not be None. Check again the data provided."
         )
 
     if synth.empty:
         raise ValueError(
-            f"Synthetic data can not be empty. Check again the data provided."
+            "Synthetic data can not be empty. Check again the data provided."
         )
 
     # Check expert knowledge columns in synth
@@ -133,7 +135,8 @@ def pass_checks(
     missing_cols_synth = set(expert_knowledge_columns) - set(synth.columns)
     if bool(missing_cols_synth):
         raise ValueError(
-            f"Columns that are evaluated through expert knowledge cannot be missing. Check again the data provided."
+            "Columns that are evaluated through expert knowledge cannot be "
+            "missing from the synthetic data. Check again the data provided."
         )
 
     if adversarial_checks:
@@ -141,20 +144,36 @@ def pass_checks(
 
         if rwd is None:
             raise ValueError(
-                f"Real World data can not be None. Check again the data provided."
+                "Real World data can not be None. Check again the data provided."
             )
 
         if rwd.empty:
             raise ValueError(
-                f"Real World data can not be empty. Check again the data provided."
+                "Real World data can not be empty. Check again the data provided."
             )
 
-        if not (len(synth) == len(rwd)):
+        missing_cols_rwd = set(expert_knowledge_columns) - set(rwd.columns)
+        if bool(missing_cols_rwd):
             raise ValueError(
-                f"Synthetic and Real World data should have the same length. Check again the data provided."
+                "Columns that are evaluated through expert knowledge cannot be "
+                "missing from the real-world data. Check again the data provided."
             )
 
         if (target_col not in synth.columns) or (target_col not in rwd.columns):
             raise ValueError(
-                f"Target column should exist in the data. Check again the data provided."
+                "Target column should exist in the data. "
+                "Check again the data provided."
             )
+
+        for dataset_name, dataset in (("Synthetic", synth), ("Real World", rwd)):
+            target_values = dataset[target_col]
+            if target_values.isna().any():
+                raise ValueError(
+                    f"{dataset_name} target column can not contain missing values."
+                )
+
+            invalid_target_values = set(target_values.unique()) - {0, 1}
+            if invalid_target_values:
+                raise ValueError(
+                    f"{dataset_name} target column should only contain 0 or 1."
+                )

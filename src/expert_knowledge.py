@@ -1,7 +1,8 @@
-from typing import Dict, List, Union, Any
-import pandas as pd
-from pathlib import Path
 import argparse
+from pathlib import Path
+from typing import Any, Dict, List, Union
+
+import pandas as pd
 
 from utils import load_csv, store_json, get_config, pass_checks
 
@@ -11,25 +12,13 @@ def validate_dataframe_rows(
     expected_values: Dict[str, Union[List[Any], List[Union[int, float]]]],
     expected_types: Dict[str, str],
 ) -> pd.Series:
-    """
-    Vectorized validation of entire DataFrame against expected criteria.
-    Validates all rows simultaneously using pandas vectorized operations.
-    For categorical columns, checks if values exist in the allowed set. For
-    numerical columns, checks if values fall within the specified min-max
-    range. NaN values are considered invalid.
+    """Validate DataFrame rows against expected criteria.
 
-    Args:
-        df (pd.DataFrame): DataFrame to validate.
-        expected_values (Dict[str, Union[List[Any], List[Union[int, float]]]]):
-            Dictionary mapping column names to their expected values. For categorical
-            columns, should contain list of valid values. For numerical columns,
-            should contain [min_value, max_value].
-        expected_types: Dict[str, str]: Dictionary mapping column names to their
-            expected data types (categorical, numeric).
-
-    Returns:
-        pd.Series: Boolean Series where True indicates valid rows,
-                   False indicates invalid rows.
+    :param df: DataFrame to validate.
+    :param expected_values: Mapping of column names to allowed categorical
+        values or numeric ``[min_value, max_value]`` ranges.
+    :param expected_types: Mapping of column names to expected data types.
+    :return: Boolean series where ``True`` indicates valid rows.
     """
 
     # Start with all rows being valid
@@ -43,16 +32,15 @@ def validate_dataframe_rows(
         if not column_data_type:
             continue
 
-        # NaN values check
-        is_valid &= df[column].notna()
-
         if column_data_type == "categorical":
             # Categorical check
             is_valid &= df[column].isin(exp_values)
         elif column_data_type == "numeric":
             # Numerical check
             min_val, max_val = exp_values[0], exp_values[1]
-            is_valid &= (df[column] >= min_val) & (df[column] <= max_val)
+            numeric_values = pd.to_numeric(df[column], errors="coerce")
+            column_is_valid = numeric_values.between(min_val, max_val)
+            is_valid &= column_is_valid
 
     return is_valid
 
@@ -60,7 +48,8 @@ def validate_dataframe_rows(
 def expert_knowledge_check(
     synth_data: pd.DataFrame, config: Dict[str, Any]
 ) -> Dict[str, Union[str, List[int], Dict[int, Dict[str, Any]]]]:
-    """Validate synthetic data against expert knowledge criteria and return results.
+    """Validate synthetic data against expert knowledge criteria.
+
     Applies row-by-row validation to a DataFrame using predefined expected values
     and returns a summary of valid/invalid rows along with expert knowledge information.
     Invalid rows are identified as those where is_row_invalid() returns False.
@@ -70,7 +59,8 @@ def expert_knowledge_check(
         config (Dict[str, Any]): Configuration dictionary.
 
     Returns:
-        Dict[str, Union[str, List[int], Dict[int, Dict[str, Any]]]]: Dictionary containing:
+        Dict[str, Union[str, List[int], Dict[int, Dict[str, Any]]]]:
+            Dictionary containing:
             - "Information": Expert knowledge description from config
             - "Valid Rows": List of row indices that passed all validations
             - "Invalid Rows": Dictionary mapping row indices to their invalid data
@@ -115,7 +105,8 @@ def run_expert_knowledge_check(
 
     Args:
         synth_path (Path): Path to synthetic feature data CSV file.
-        output_path (Path): Path where expert knowledge evaluation results will be saved.
+        output_path (Path): Path where expert knowledge evaluation results
+            will be saved.
     """
 
     # Load data
