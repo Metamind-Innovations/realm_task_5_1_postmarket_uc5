@@ -81,9 +81,6 @@ class COPowereDWrapper:
     def predict_proba(
             self,
             data: Union[pd.DataFrame, np.ndarray],
-            num_retries: int = 1,
-            retry_delay: float = 0.0,
-            batch_size: int = 1000,
     ) -> np.ndarray:
         """Predict class probabilities for input tabular data.
 
@@ -91,21 +88,11 @@ class COPowereDWrapper:
         ``result.csv`` with a single ``proba`` column.
 
         :param data: DataFrame or array with model input columns.
-        :param num_retries: Number of model execution attempts.
-        :param retry_delay: Delay between attempts in seconds.
-        :param batch_size: Maximum rows sent to one model run.
         :return: Probability array with shape ``(n_samples, 2)`` unless
             ``one_dim_preds`` is ``True``.
         :raises ValueError: If the input data or model output is inconsistent.
         :raises RuntimeError: If model execution fails.
         """
-        import time
-
-        if num_retries < 1:
-            raise ValueError("num_retries must be at least 1.")
-
-        if batch_size < 1:
-            raise ValueError("batch_size must be at least 1.")
 
         if isinstance(data, np.ndarray):
             if not self.feature_names:
@@ -126,182 +113,169 @@ class COPowereDWrapper:
             )
 
         model_data = data.loc[:, self.MODEL_COLUMNS]
-        probabilities = []
         n_samples = len(model_data)
         if n_samples == 0:
             raise ValueError("Input data can not be empty.")
 
-        n_batches = (n_samples + batch_size - 1) // batch_size
+        last_error = None
+        positive_probabilities = None
 
-        for batch_idx in range(n_batches):
-            start_idx = batch_idx * batch_size
-            end_idx = min((batch_idx + 1) * batch_size, n_samples)
-            batch_data = model_data.iloc[start_idx:end_idx]
-            last_error = None
+        with tempfile.TemporaryDirectory(prefix="copowered_model_") as tmp_dir:
+            data_dir = Path(tmp_dir).resolve()
+            input_dir = data_dir / "data"
+            output_dir = data_dir / "result"
+            input_dir.mkdir(parents=True, exist_ok=True)
+            output_dir.mkdir(parents=True, exist_ok=True)
+            input_csv = input_dir / "data.csv"
+            result_csv = output_dir / "result.csv"
+            model_data.to_csv(input_csv, index=False)
 
-            for attempt in range(num_retries):
-                with tempfile.TemporaryDirectory(prefix="copowered_model_") as tmp_dir:
-                    data_dir = Path(tmp_dir).resolve()
-                    input_dir = data_dir / "data"
-                    output_dir = data_dir / "result"
-                    input_dir.mkdir(parents=True, exist_ok=True)
-                    output_dir.mkdir(parents=True, exist_ok=True)
-                    input_csv = input_dir / "data.csv"
-                    result_csv = output_dir / "result.csv"
-                    batch_data.to_csv(input_csv, index=False)
-
-                    if self.execution_mode == "local":
-                        if not self.jar_path.exists():
-                            raise RuntimeError(
-                                "COPowereD model jar not found at "
-                                f"{self.jar_path}."
-                            )
-
-                        command = [
-                            "java",
-                            "-cp",
-                            str(self.jar_path),
-                            self.MODEL_MAIN_CLASS,
-                            "--input_folder",
-                            str(input_dir),
-                            "--output_folder",
-                            str(output_dir),
-                        ]
-                        cwd = self.jar_path.parent
-                        log_config = cwd / "log4j.properties"
-                        log_config.write_text(
-                            "\n".join(
-                                [
-                                    "log4j.rootLogger=ERROR, stdout",
-                                    "log4j.appender.stdout="
-                                    "org.apache.log4j.ConsoleAppender",
-                                    "log4j.appender.stdout.Target=System.out",
-                                    "log4j.appender.stdout.layout="
-                                    "org.apache.log4j.PatternLayout",
-                                ]
-                            ),
-                            encoding="utf-8",
-                        )
-                    elif self.execution_mode == "docker":
-                        result_csv = output_dir / "predictions.csv"
-                        command = [
-                            self.docker_executable,
-                            "run",
-                            "--rm",
-                            "--entrypoint",
-                            "sh",
-                            "-v",
-                            f"{data_dir.as_posix()}:/app/data",
-                            self.image,
-                            "-c",
-                            (
-                                "cd /app && "
-                                "printf '%s\\n' "
-                                "'log4j.rootLogger=ERROR, stdout' "
-                                "'log4j.appender.stdout="
-                                "org.apache.log4j.ConsoleAppender' "
-                                "'log4j.appender.stdout.Target=System.out' "
-                                "'log4j.appender.stdout.layout="
-                                "org.apache.log4j.PatternLayout' "
-                                "> log4j.properties && "
-                                "java -cp /app/sparkServer-assembly-1.2.0.jar "
-                                f"{self.MODEL_MAIN_CLASS} "
-                                "--input_folder /app/data/data "
-                                "--output_folder /app/data/result && "
-                                "if [ -d /app/data/result/result.csv ]; then "
-                                "cat /app/data/result/result.csv/part-* "
-                                "> /app/data/result/predictions.csv; "
-                                "else cp /app/data/result/result.csv "
-                                "/app/data/result/predictions.csv; fi && "
-                                "chmod a+r /app/data/result/predictions.csv && "
-                                "printf '\\n__COPOWERED_RESULT_BEGIN__\\n' && "
-                                "cat /app/data/result/predictions.csv && "
-                                "printf '\\n__COPOWERED_RESULT_END__\\n'"
-                            ),
-                        ]
-                        cwd = None
-                    else:
-                        raise ValueError(
-                            "execution_mode must be either 'docker' or 'local'."
-                        )
-
-                    completed = subprocess.run(
-                        command,
-                        capture_output=True,
-                        check=False,
-                        cwd=cwd,
-                        text=True,
+            if self.execution_mode == "local":
+                if not self.jar_path.exists():
+                    raise RuntimeError(
+                        "COPowereD model jar not found at "
+                        f"{self.jar_path}."
                     )
 
-                    if completed.returncode == 0 and result_csv.exists():
-                        if result_csv.is_dir():
-                            result_files = sorted(result_csv.glob("part-*"))
-                            if not result_files:
-                                raise ValueError(
-                                    "COPowereD model output directory does not "
-                                    "contain a prediction part file."
-                                )
-                            result_path = result_files[0]
-                        else:
-                            result_path = result_csv
-
-                        try:
-                            result_df = pd.read_csv(result_path)
-                        except PermissionError:
-                            start_marker = "__COPOWERED_RESULT_BEGIN__"
-                            end_marker = "__COPOWERED_RESULT_END__"
-                            start_index = completed.stdout.find(start_marker)
-                            end_index = completed.stdout.find(end_marker)
-                            if start_index == -1 or end_index == -1:
-                                raise
-                            csv_text = completed.stdout[
-                                start_index + len(start_marker):end_index
-                            ].strip()
-                            result_df = pd.read_csv(io.StringIO(csv_text))
-                        if "proba" not in result_df.columns:
-                            raise ValueError(
-                                "Dockerized model output must contain a 'proba' column."
-                            )
-                        if len(result_df) != len(batch_data):
-                            raise ValueError(
-                                "Dockerized model output row count does not match "
-                                "the input row count."
-                            )
-
-                        batch_probabilities = result_df["proba"].to_numpy(
-                            dtype=float
-                        )
-                        if (
-                            not np.isfinite(batch_probabilities).all()
-                            or (batch_probabilities < 0).any()
-                            or (batch_probabilities > 1).any()
-                        ):
-                            raise ValueError(
-                                "Dockerized model probabilities must be finite "
-                                "values between 0 and 1."
-                            )
-
-                        probabilities.append(batch_probabilities)
-                        self._last_response = result_df.copy()
-                        last_error = None
-                        break
-
-                    last_error = (
-                            completed.stderr.strip()
-                            or completed.stdout.strip()
-                            or "COPowereD model did not create result.csv."
-                    )
-
-                if attempt < num_retries - 1:
-                    time.sleep(retry_delay)
-
-            if last_error is not None:
-                raise RuntimeError(
-                    "COPowereD model failed for batch "
-                    f"{batch_idx + 1}/{n_batches}: {last_error}"
+                command = [
+                    "java",
+                    "-cp",
+                    str(self.jar_path),
+                    self.MODEL_MAIN_CLASS,
+                    "--input_folder",
+                    str(input_dir),
+                    "--output_folder",
+                    str(output_dir),
+                ]
+                cwd = self.jar_path.parent
+                log_config = cwd / "log4j.properties"
+                log_config.write_text(
+                    "\n".join(
+                        [
+                            "log4j.rootLogger=ERROR, stdout",
+                            "log4j.appender.stdout="
+                            "org.apache.log4j.ConsoleAppender",
+                            "log4j.appender.stdout.Target=System.out",
+                            "log4j.appender.stdout.layout="
+                            "org.apache.log4j.PatternLayout",
+                        ]
+                    ),
+                    encoding="utf-8",
+                )
+            elif self.execution_mode == "docker":
+                result_csv = output_dir / "predictions.csv"
+                command = [
+                    self.docker_executable,
+                    "run",
+                    "--rm",
+                    "--entrypoint",
+                    "sh",
+                    "-v",
+                    f"{data_dir.as_posix()}:/app/data",
+                    self.image,
+                    "-c",
+                    (
+                        "cd /app && "
+                        "printf '%s\\n' "
+                        "'log4j.rootLogger=ERROR, stdout' "
+                        "'log4j.appender.stdout="
+                        "org.apache.log4j.ConsoleAppender' "
+                        "'log4j.appender.stdout.Target=System.out' "
+                        "'log4j.appender.stdout.layout="
+                        "org.apache.log4j.PatternLayout' "
+                        "> log4j.properties && "
+                        "java -cp /app/sparkServer-assembly-1.2.0.jar "
+                        f"{self.MODEL_MAIN_CLASS} "
+                        "--input_folder /app/data/data "
+                        "--output_folder /app/data/result && "
+                        "if [ -d /app/data/result/result.csv ]; then "
+                        "cat /app/data/result/result.csv/part-* "
+                        "> /app/data/result/predictions.csv; "
+                        "else cp /app/data/result/result.csv "
+                        "/app/data/result/predictions.csv; fi && "
+                        "chmod a+r /app/data/result/predictions.csv && "
+                        "printf '\\n__COPOWERED_RESULT_BEGIN__\\n' && "
+                        "cat /app/data/result/predictions.csv && "
+                        "printf '\\n__COPOWERED_RESULT_END__\\n'"
+                    ),
+                ]
+                cwd = None
+            else:
+                raise ValueError(
+                    "execution_mode must be either 'docker' or 'local'."
                 )
 
-        positive_probabilities = np.concatenate(probabilities)
+            completed = subprocess.run(
+                command,
+                capture_output=True,
+                check=False,
+                cwd=cwd,
+                text=True,
+            )
+
+            if completed.returncode == 0 and result_csv.exists():
+                if result_csv.is_dir():
+                    result_files = sorted(result_csv.glob("part-*"))
+                    if not result_files:
+                        raise ValueError(
+                            "COPowereD model output directory does not "
+                            "contain a prediction part file."
+                        )
+                    result_path = result_files[0]
+                else:
+                    result_path = result_csv
+
+                try:
+                    result_df = pd.read_csv(result_path)
+                except PermissionError:
+                    start_marker = "__COPOWERED_RESULT_BEGIN__"
+                    end_marker = "__COPOWERED_RESULT_END__"
+                    start_index = completed.stdout.find(start_marker)
+                    end_index = completed.stdout.find(end_marker)
+                    if start_index == -1 or end_index == -1:
+                        raise
+                    csv_text = completed.stdout[
+                        start_index + len(start_marker):end_index
+                    ].strip()
+                    result_df = pd.read_csv(io.StringIO(csv_text))
+                if "proba" not in result_df.columns:
+                    raise ValueError(
+                        "Dockerized model output must contain a 'proba' column."
+                    )
+                if len(result_df) != len(model_data):
+                    raise ValueError(
+                        "Dockerized model output row count does not match "
+                        "the input row count."
+                    )
+
+                positive_probabilities = result_df["proba"].to_numpy(
+                    dtype=float
+                )
+                if (
+                    not np.isfinite(positive_probabilities).all()
+                    or (positive_probabilities < 0).any()
+                    or (positive_probabilities > 1).any()
+                ):
+                    raise ValueError(
+                        "Dockerized model probabilities must be finite "
+                        "values between 0 and 1."
+                    )
+
+                self._last_response = result_df.copy()
+
+            else:
+                last_error = (
+                    completed.stderr.strip()
+                    or completed.stdout.strip()
+                    or "COPowereD model did not create result.csv."
+                )
+
+        if last_error is not None:
+            raise RuntimeError(
+                "COPowereD model failed: "
+                f"{last_error}"
+            )
+
         all_probabilities = np.column_stack(
             [1.0 - positive_probabilities, positive_probabilities]
         )
@@ -316,20 +290,14 @@ class COPowereDWrapper:
     def predict(
             self,
             data: Union[pd.DataFrame, np.ndarray],
-            num_retries: int = 1,
-            retry_delay: float = 0.0,
     ) -> np.ndarray:
         """Predict binary class labels for input tabular data.
 
         :param data: DataFrame or array with model input columns.
-        :param num_retries: Number of Docker execution attempts.
-        :param retry_delay: Delay between attempts in seconds.
         :return: Array of binary class labels.
         """
         probabilities = self.predict_proba(
             data=data,
-            num_retries=num_retries,
-            retry_delay=retry_delay,
         )
         positive_probabilities = (
             probabilities if probabilities.ndim == 1 else probabilities[:, 1]

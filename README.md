@@ -215,22 +215,22 @@ python src/adversarial_evaluation.py \
     "Accuracy": {
         "rwd": 0.83,
         "synthetic": 0.81,
-        "difference": "-2.0pp"
+        "difference": "2.0pp"
     },
     "Precision": {
         "rwd": 0.84,
         "synthetic": 0.79,
-        "difference": "-5.0pp"
+        "difference": "5.0pp"
     },
     "Recall": {
         "rwd": 0.62,
         "synthetic": 0.65,
-        "difference": "+3.0pp"
+        "difference": "3.0pp"
     },
     "F1-Score": {
         "rwd": 0.71,
         "synthetic": 0.69,
-        "difference": "-2.0pp"
+        "difference": "2.0pp"
     }
 }
 ```

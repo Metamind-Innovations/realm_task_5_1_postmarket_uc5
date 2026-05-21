@@ -1,4 +1,3 @@
-import csv
 import json
 from pathlib import Path
 from typing import Any, Dict, Optional, Union
@@ -20,13 +19,7 @@ def load_csv(file_path: Union[str, Path]) -> Optional[pd.DataFrame]:
         pd.DataFrame: Data from the CSV file.
     """
 
-    file_path = Path(file_path)
-    with file_path.open("r", encoding="utf-8", newline="") as csv_file:
-        header = next(csv.reader(csv_file), None)
-
     df = pd.read_csv(file_path, sep=",")
-    if header and len(header) == len(df.columns):
-        df.columns = header
 
     return df
 

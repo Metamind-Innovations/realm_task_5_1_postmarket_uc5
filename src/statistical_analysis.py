@@ -173,16 +173,6 @@ def statistical_analysis(
         "data_types_issues": data_type_issues,
     }
 
-    # Duplicate columns
-    duplicate_column_names = {}
-    for column_name in synth_data.columns[synth_data.columns.duplicated()].unique():
-        duplicate_column_names[column_name] = [
-            index
-            for index, current_column_name in enumerate(synth_data.columns)
-            if current_column_name == column_name
-        ]
-    statistical_analysis_results["duplicate_column_names"] = duplicate_column_names
-
     # Duplicate rows
     statistical_analysis_results["duplicate_rows_indices"] = check_duplicate_rows(
         synth_data

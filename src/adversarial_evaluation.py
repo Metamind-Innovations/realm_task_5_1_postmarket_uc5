@@ -53,13 +53,10 @@ def combine_metrics_results(
 
     for metric_name in synth_metrics.keys():
         if metric_name in rwd_metrics:
-            difference_pp = (
-                                    synth_metrics[metric_name] - rwd_metrics[metric_name]
-                            ) * 100
             combined_results[metric_name] = {
                 "rwd": rwd_metrics[metric_name],
                 "synthetic": synth_metrics[metric_name],
-                "difference": f"{difference_pp:+.1f}pp",
+                "difference": f"{abs(synth_metrics[metric_name] - rwd_metrics[metric_name])*100}pp",
             }
 
     return combined_results
