@@ -266,7 +266,7 @@ The adversarial evaluation compares model performance:
 
 The [kubeflow_component/copowered_post_market_component.py](./kubeflow_component/copowered_post_market_component.py) file defines a Kubeflow pipeline for automating the COPowereD post-market evaluation workflow.
 
-Before compiling the pipeline for deployment, set the `COPOWERED_MODEL_IMAGE` constant in [copowered_post_market_component.py](./kubeflow_component/copowered_post_market_component.py) to the COPowereD image that Kubeflow can pull.
+Before compiling the pipeline for deployment, set the `COPOWERED_MODEL_IMAGE` constant in [copowered_post_market_component.py](./kubeflow_component/copowered_post_market_component.py#L7) to the COPowereD image that Kubeflow can pull.
 
 This pipeline orchestrates the following components:
 
